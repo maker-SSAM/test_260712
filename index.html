@@ -2,10 +2,9 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>OpenSCAD 웹 파라매트릭 테스트 - 가이드라인 추가</title>
+    <title>OpenSCAD 웹 파라매트릭 테스트 - 평면 치수 고도화</title>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/renderers/CSS2DRenderer.js"></script>
     <style>
         body { font-family: sans-serif; margin: 20px; display: flex; }
         #controls { width: 300px; padding: 20px; background: #f5f5f5; border-radius: 8px; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -13,14 +12,13 @@
         .control-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
         input { width: 100%; }
-        .dim-label { color: #ff5722; font-weight: bold; font-size: 13px; background: rgba(255,255,255,0.9); padding: 2px 6px; border-radius: 4px; border: 1px solid #ff5722; }
     </style>
 </head>
 <body>
 
     <div id="controls">
         <h3>직육면체 수치 조절 (mm)</h3>
-        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* 기능 추가: 3차원 바닥 격자(Grid) 및 중심 좌표축 표시</p>
+        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* 기능 추가: Z축 세로 안내선 및 평면에 누운 입체 텍스트 표시</p>
         <div class="control-group">
             <label>가로 (X): <span id="valX">50</span>mm</label>
             <input type="range" id="sizeX" min="10" max="150" value="50" oninput="updateModel()">
@@ -39,50 +37,54 @@
 
     <script>
         const container = document.getElementById('viewer');
-        
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xf5f5f5); // 격자가 잘 보이도록 배경 톤 조정
+        scene.background = new THREE.Color(0xf5f5f5);
 
         const camera = new THREE.PerspectiveCamera(45, 600 / 400, 1, 1000);
-        camera.position.set(120, 120, 180); // 가이드라인 전체를 조망하기 위해 카메라 살짝 뒤로 이동
+        camera.position.set(120, 150, 200);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(600, 400);
         container.appendChild(renderer.domElement);
 
-        const labelRenderer = new THREE.CSS2DRenderer();
-        labelRenderer.setSize(600, 400);
-        labelRenderer.domElement.style.position = 'absolute';
-        labelRenderer.domElement.style.top = '0px';
-        labelRenderer.domElement.style.pointerEvents = 'none';
-        container.appendChild(labelRenderer.domElement);
-
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
 
-        // 조명 설정 (바닥 격자가 잘 보이도록 은은하게 조정)
-        const light1 = new THREE.DirectionalLight(0xffffff, 0.7);
+        // 조명
+        const light1 = new THREE.DirectionalLight(0xffffff, 0.8);
         light1.position.set(1, 2, 1).normalize();
         scene.add(light1);
         const ambientLight = new THREE.AmbientLight(0x707070);
         scene.add(ambientLight);
 
-        // 💡 [변경점 1] 3차원 바닥 모눈종이(Grid) 가이드라인 추가 (크기 300, 30칸 분할 = 10mm 간격)
+        // 바닥 격자 및 기본 축
         const gridHelper = new THREE.GridHelper(300, 30, 0xaaaaaa, 0xcccccc);
-        gridHelper.position.y = -0.1; // 모델 바닥과 겹쳐서 깜빡이는 현상 방지
+        gridHelper.position.y = 0;
         scene.add(gridHelper);
-
-        // 💡 [변경점 2] 중심 좌표축(Axes) 가이드라인 추가 (X:빨강, Y:초록, Z:파랑)
-        const axesHelper = new THREE.AxesHelper(30);
-        scene.add(axesHelper);
 
         let modelGroup;
 
-        function createLabel(text) {
-            const div = document.createElement('div');
-            div.className = 'dim-label';
-            div.textContent = text;
-            return new THREE.CSS2DObject(div);
+        // 💡 [변경점 1] 글씨를 평면(스티커)으로 만들기 위해 캔버스 이미지를 생성하는 텍스트 함수
+        function create3DTextPlane(text) {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.fillRect(0, 0, 128, 64);
+            ctx.strokeStyle = '#ff5722';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(0, 0, 128, 64);
+            ctx.font = 'bold 24px sans-serif';
+            ctx.fillStyle = '#ff5722';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(text, 64, 32);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true });
+            const geometry = new THREE.PlaneGeometry(24, 12);
+            return new THREE.Mesh(geometry, material);
         }
 
         function updateModel() {
@@ -97,30 +99,44 @@
             if (modelGroup) scene.remove(modelGroup);
             modelGroup = new THREE.Group();
 
+            // 상자 및 윤곽선
             const geometry = new THREE.BoxGeometry(x, z, y); 
             const material = new THREE.MeshStandardMaterial({ color: 0x3388dd, roughness: 0.4, metalness: 0.1 });
             const cubeMesh = new THREE.Mesh(geometry, material);
-            
-            // 💡 [변경점 3] 모델이 가이드라인 평면 '위'에 서 있도록 중심점 이동 (기존은 정중앙이 바닥에 걸침)
             cubeMesh.position.y = z / 2;
             modelGroup.add(cubeMesh);
 
             const edges = new THREE.EdgesGeometry(geometry);
             const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 }));
-            line.position.y = z / 2; // 윤곽선도 똑같이 위로 이동
+            line.position.y = z / 2;
             modelGroup.add(line);
 
-            // 💡 [변경점 4] 바닥 기준면에 맞게 치수 표시 레이블 위치 재조정
-            const xLabel = createLabel(`${x} mm`);
-            xLabel.position.set(0, 0, y/2 + 10); 
+            // 💡 [변경점 2] Z축 크기 가늠 세로 안내선 추가 (상자 왼쪽 뒤 모서리 근처에 배치)
+            const zLineGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-x/2 - 10, 0, y/2 + 10),
+                new THREE.Vector3(-x/2 - 10, z, y/2 + 10)
+            ]);
+            const zLine = new THREE.Line(zLineGeo, new THREE.LineBasicMaterial({ color: 0xff5722, linewidth: 2 }));
+            modelGroup.add(zLine);
+
+            // 💡 [변경점 3] 각 글씨 평면을 3D 좌표평면 각도에 맞게 회전시켜 눕히기
+            // 가로(X) 치수: 바닥에 눕힘
+            const xLabel = create3DTextPlane(`${x} mm`);
+            xLabel.position.set(0, 0.5, y/2 + 15); 
+            xLabel.rotation.x = -Math.PI / 2; // 바닥 평면에 눕히기
             modelGroup.add(xLabel);
 
-            const yLabel = createLabel(`${y} mm`);
-            yLabel.position.set(x/2 + 10, 0, 0); 
+            // 세로(Y) 치수: 바닥에 눕힘
+            const yLabel = create3DTextPlane(`${y} mm`);
+            yLabel.position.set(x/2 + 15, 0.5, 0); 
+            yLabel.rotation.x = -Math.PI / 2; 
+            yLabel.rotation.z = Math.PI / 2; // 세로 방향 정렬
             modelGroup.add(yLabel);
 
-            const zLabel = createLabel(`${z} mm`);
-            zLabel.position.set(-x/2 - 10, z/2, y/2); 
+            // 높이(Z) 치수: 세로 가이드라인 옆에 수직 벽면 평면으로 세움
+            const zLabel = create3DTextPlane(`${z} mm`);
+            zLabel.position.set(-x/2 - 25, z/2, y/2 + 10); 
+            zLabel.rotation.y = Math.PI / 4; // 카메라를 비스듬히 바라보도록 세우기
             modelGroup.add(zLabel);
 
             scene.add(modelGroup);
@@ -130,7 +146,6 @@
             requestAnimationFrame(animate);
             controls.update();
             renderer.render(scene, camera);
-            labelRenderer.render(scene, camera);
         }
 
         updateModel();
