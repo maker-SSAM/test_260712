@@ -2,10 +2,12 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>초등 교육용 캔버스 우회 기반 한글 3D 뷰어</title>
+    <title>초등 교육용 벡터 기반 한글 3D 뷰어</title>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/exporters/STLExporter.js"></script>
+    <!-- 💡 [핵심 엔진 추가] 웹 브라우저 자체에서 TTF 폰트의 벡터 패스를 추출하는 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
     <style>
         body { font-family: sans-serif; margin: 20px; display: flex; }
         #controls { width: 300px; padding: 20px; background: #f5f5f5; border-radius: 8px; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -25,7 +27,7 @@
 
     <div id="controls">
         <h3>한글 3D 각인 설정</h3>
-        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* 보안 차단 없이 한글이 즉시 렌더링됩니다.</p>
+        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* 폰트 로드 완료(1~2초) 후 실제 3D 글자가 돌출됩니다.</p>
         
         <div class="control-group">
             <label>각인할 글자 입력</label>
@@ -36,7 +38,7 @@
         <div class="control-group"><label>상자 세로 (Y): <span id="valY">60</span>mm</label><input type="range" id="sizeY" min="40" max="150" value="60" oninput="updateModel()"></div>
         <div class="control-group"><label>상자 높이 (Z): <span id="valZ">20</span>mm</label><input type="range" id="sizeZ" min="10" max="100" value="20" oninput="updateModel()"></div>
         
-        <div class="control-group"><label>글자 크기: <span id="valFontSize">10</span></label><input type="range" id="fontSize" min="5" max="25" value="10" oninput="updateModel()"></div>
+        <div class="control-group"><label>글자 크기: <span id="valFontSize">12</span></label><input type="range" id="fontSize" min="5" max="25" value="12" oninput="updateModel()"></div>
         <div class="control-group"><label>글자 돌출 높이: <span id="valFontThick">4</span>mm</label><input type="range" id="fontThick" min="1" max="15" value="4" oninput="updateModel()"></div>
         
         <button class="download-btn" onclick="downloadSTL()">글자 포함 STL 다운로드</button>
@@ -73,9 +75,46 @@
         scene.add(floor);
 
         let modelGroup;
+        let openTypeFont = null;
 
-        // 💡 백그라운드 폰트 로드 대기 없이 즉시 실행
+        // 상자 선행 렌더링
         updateModel();
+
+        // 💡 [변경 및 보완] CORS 차단이 없는 구글 오픈소스 TTF 폰트 파일을 opentype.js 엔진으로 직접 로드
+        opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumgothic/NanumGothic-Bold.ttf', function(err, font) {
+            if (err) {
+                console.error('폰트 로드 실패:', err);
+            } else {
+                openTypeFont = font;
+                updateModel(); // 로드 완료 시 글자를 결합하여 갱신
+            }
+        });
+
+        // opentype.js의 패스를 Three.js의 Shape로 변환하는 헬퍼 함수
+        function createThreeShapes(text, size) {
+            const path = openTypeFont.getPath(text, 0, 0, size);
+            const fontPaths = path.toCommands();
+            const shapes = [];
+            let currentShape = null;
+
+            fontPaths.forEach(cmd => {
+                if (cmd.type === 'M') {
+                    if (currentShape) shapes.push(currentShape);
+                    currentShape = new THREE.Shape();
+                    currentShape.moveTo(cmd.x, cmd.y);
+                } else if (cmd.type === 'L') {
+                    if (currentShape) currentShape.lineTo(cmd.x, cmd.y);
+                } else if (cmd.type === 'Q') {
+                    if (currentShape) currentShape.quadraticCurveTo(cmd.x1, cmd.y1, cmd.x, cmd.y);
+                } else if (cmd.type === 'C') {
+                    if (currentShape) currentShape.bezierCurveTo(cmd.x1, cmd.y1, cmd.x2, cmd.y2, cmd.x, cmd.y);
+                } else if (cmd.type === 'Z') {
+                    if (currentShape) currentShape.closePath();
+                }
+            });
+            if (currentShape) shapes.push(currentShape);
+            return shapes;
+        }
 
         function updateModel() {
             const textValue = document.getElementById('inputText').value || ' ';
@@ -95,7 +134,7 @@
             if (modelGroup) scene.remove(modelGroup);
             modelGroup = new THREE.Group();
 
-            // 1. 베이스 상자
+            // 1. 베이스 상자 생성
             const boxGeo = new THREE.BoxGeometry(x, z, y); 
             const boxMat = new THREE.MeshStandardMaterial({ color: 0x1e88e5, roughness: 0.15 });
             const cubeMesh = new THREE.Mesh(boxGeo, boxMat);
@@ -104,39 +143,35 @@
             cubeMesh.receiveShadow = true;
             modelGroup.add(cubeMesh);
 
-            // 2. 💡 [변경점: 캔버스 우회법 기법 적용] 
-            // 2D 캔버스에 폰트를 그려서 텍스처(형상 데이터)로 추출합니다.
-            const canvas = document.createElement('canvas');
-            canvas.width = 512;
-            canvas.height = 512;
-            const ctx = canvas.getContext('2d');
-            
-            ctx.fillStyle = '#ffffff';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // 시스템 폰트(고딕 기본)를 활용하여 한글을 캔버스 중앙에 굵게 드로잉합니다.
-            ctx.font = `bold ${fSize * 4}px sans-serif`;
-            ctx.fillStyle = '#000000';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(textValue, canvas.width / 2, canvas.height / 2);
-
-            // 3. 그려진 캔버스 이미지를 기반으로 3D 돌출 지형 생성
-            const texture = new THREE.CanvasTexture(canvas);
-            const textGeo = new THREE.PlaneGeometry(x * 0.8, y * 0.8);
-            
-            // 입체 텍스트 전용 특수 재질 매핑 기법 적용
-            const textMat = new THREE.MeshStandardMaterial({ 
-                color: 0xffeb3b,
-                bumpMap: texture,
-                bumpScale: fThick, // 돌출 높이 슬라이더 연동
-                roughness: 0.2 
-            });
-            
-            const textMesh = new THREE.Mesh(textGeo, textMat);
-            textMesh.rotation.x = -Math.PI / 2;
-            textMesh.position.set(0, z + 0.1, 0); // 상자 윗면에 밀착 고정
-            modelGroup.add(textMesh);
+            // 2. 💡 [변경점: 진짜 3D 메쉬 돌출 연산]
+            if (openTypeFont) {
+                const shapes = createThreeShapes(textValue, fSize);
+                
+                // ExtrudeGeometry를 사용하여 캔버스 이미지 방식이 아닌 진짜 벡터 두께 부여
+                const extrudeSettings = {
+                    depth: fThick,
+                    bevelEnabled: false,
+                    curveSegments: 5
+                };
+                
+                const textGeo = new THREE.ExtrudeGeometry(shapes, extrudeSettings);
+                
+                // 정중앙 정렬을 위한 연산
+                textGeo.computeBoundingBox();
+                const centerOffset = - 0.5 * ( textGeo.boundingBox.max.x - textGeo.boundingBox.min.x );
+                const yOffset = - 0.5 * ( textGeo.boundingBox.max.y - textGeo.boundingBox.min.y );
+                
+                const textMat = new THREE.MeshStandardMaterial({ color: 0xffeb3b, roughness: 0.2 });
+                const textMesh = new THREE.Mesh(textGeo, textMat);
+                
+                // 상자 표면 정중앙 안착 및 눕히기 (opentype.js 좌표계 상하 반전 보정)
+                textMesh.rotation.x = Math.PI; 
+                textMesh.rotation.z = Math.PI;
+                textMesh.position.set(-centerOffset, z, -yOffset);
+                textMesh.castShadow = true;
+                
+                modelGroup.add(textMesh);
+            }
 
             scene.add(modelGroup);
         }
