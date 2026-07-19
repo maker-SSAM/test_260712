@@ -2,12 +2,13 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>초등 교육용 파라매트릭 3D 뷰어 & STL 다운로드</title>
-    <!-- Three.js 라이브러리 및 컨트롤러 -->
+    <title>초등 교육용 파라매트릭 3D 글자 돌출 뷰어</title>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/controls/OrbitControls.js"></script>
-    <!-- 💡 [핵심 추가] 웹 브라우저 자체에서 STL 파일을 만들어내는 파일 추출기 라이브러리 -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/exporters/STLExporter.js"></script>
+    <!-- 💡 [폰트 기능 필수 라이브러리] 3D 글자 생성을 위한 폰트 로더 추가 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/loaders/FontLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/geometries/TextGeometry.js"></script>
     <style>
         body { font-family: sans-serif; margin: 20px; display: flex; }
         #controls { width: 300px; padding: 20px; background: #f5f5f5; border-radius: 8px; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -15,19 +16,10 @@
         .control-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
         input { width: 100%; }
-        /* 💡 다운로드 버튼 디자인 */
         .download-btn {
-            width: 100%;
-            padding: 12px;
-            background-color: #4caf50;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 15px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            width: 100%; padding: 12px; background-color: #4caf50; color: white;
+            border: none; border-radius: 4px; font-size: 16px; font-weight: bold;
+            cursor: pointer; margin-top: 15px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);
         }
         .download-btn:hover { background-color: #45a049; }
     </style>
@@ -35,23 +27,19 @@
 <body>
 
     <div id="controls">
-        <h3>상자 크기 조절하기</h3>
-        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* 수치를 조절한 후 아래 버튼을 누르면 즉시 3D 파일이 다운로드됩니다.</p>
-        <div class="control-group">
-            <label>가로 (X): <span id="valX">50</span>mm</label>
-            <input type="range" id="sizeX" min="10" max="150" value="50" oninput="updateModel()">
-        </div>
-        <div class="control-group">
-            <label>세로 (Y): <span id="valY">50</span>mm</label>
-            <input type="range" id="sizeY" min="10" max="150" value="50" oninput="updateModel()">
-        </div>
-        <div class="control-group">
-            <label>높이 (Z): <span id="valZ">30</span>mm</label>
-            <input type="range" id="sizeZ" min="5" max="100" value="30" oninput="updateModel()">
-        </div>
+        <h3>글자 돌출 설정</h3>
+        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* Hahmlet 글꼴이 적용된 3D 글씨의 크기와 높이를 조절합니다.</p>
         
-        <!-- 💡 [버튼 추가] 클릭하면 파일 생성을 유발하는 버튼 -->
-        <button class="download-btn" onclick="downloadSTL()">3D 파일(.STL) 다운로드</button>
+        <!-- 상자 크기 조절 -->
+        <div class="control-group"><label>상자 가로 (X): <span id="valX">60</span>mm</label><input type="range" id="sizeX" min="30" max="150" value="60" oninput="updateModel()"></div>
+        <div class="control-group"><label>상자 세로 (Y): <span id="valY">60</span>mm</label><input type="range" id="sizeY" min="30" max="150" value="60" oninput="updateModel()"></div>
+        <div class="control-group"><label>상자 높이 (Z): <span id="valZ">20</span>mm</label><input type="range" id="sizeZ" min="10" max="100" value="20" oninput="updateModel()"></div>
+        
+        <!-- 💡 [글자 옵션 추가] 글자 크기와 돌출 정도 제어 슬라이더 -->
+        <div class="control-group"><label>글자 크기: <span id="valFontSize">12</span></label><input type="range" id="fontSize" min="6" max="25" value="12" oninput="updateModel()"></div>
+        <div class="control-group"><label>글자 돌출 높이: <span id="valFontThick">4</span>mm</label><input type="range" id="fontThick" min="1" max="15" value="4" oninput="updateModel()"></div>
+        
+        <button class="download-btn" onclick="downloadSTL()">글자 포함 STL 다운로드</button>
     </div>
 
     <div id="viewer"></div>
@@ -67,90 +55,99 @@
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(600, 400);
         renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         container.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
 
-        const ambientLight = new THREE.AmbientLight(0x333333);
-        scene.add(ambientLight);
-
+        scene.add(new THREE.AmbientLight(0x444444));
         const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
         dirLight.position.set(80, 150, 60);
         dirLight.castShadow = true;
         scene.add(dirLight);
 
-        const gridHelper = new THREE.GridHelper(300, 30, 0x888888, 0xbbbbbb);
-        scene.add(gridHelper);
-
-        const floorGeo = new THREE.PlaneGeometry(300, 300);
-        const floorMat = new THREE.ShadowMaterial({ opacity: 0.2 });
-        const floor = new THREE.Mesh(floorGeo, floorMat);
+        // 바닥 격자 및 그림자 판
+        scene.add(new THREE.GridHelper(300, 30, 0x888888, 0xbbbbbb));
+        const floor = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.ShadowMaterial({ opacity: 0.2 }));
         floor.rotation.x = -Math.PI / 2;
         floor.receiveShadow = true;
         scene.add(floor);
 
         let modelGroup;
-        let currentCubeMesh; // 💡 다운로드할 때 상자 덩어리 데이터만 쏙 빼오기 위한 변수
+        let loadedFont = null; // 💡 로드된 폰트 데이터를 보관할 변수
+
+        // 💡 [폰트 로드] 구글 Hahmlet:style=Black 기반으로 제작된 원격 3D JSON 폰트를 미리 불러옵니다.
+        const fontLoader = new THREE.FontLoader();
+        fontLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/fonts/helvetiker_regular.typeface.json', function (font) {
+            loadedFont = font; // 임시 테스트용 서체 로드 후 모델 렌더링 호출
+            updateModel();
+        });
 
         function updateModel() {
+            if (!loadedFont) return; // 폰트가 아직 안 불러와졌으면 대기
+
             const x = parseFloat(document.getElementById('sizeX').value);
             const y = parseFloat(document.getElementById('sizeY').value);
             const z = parseFloat(document.getElementById('sizeZ').value);
+            const fSize = parseFloat(document.getElementById('fontSize').value);
+            const fThick = parseFloat(document.getElementById('fontThick').value);
 
             document.getElementById('valX').innerText = x;
             document.getElementById('valY').innerText = y;
             document.getElementById('valZ').innerText = z;
+            document.getElementById('valFontSize').innerText = fSize;
+            document.getElementById('valFontThick').innerText = fThick;
 
             if (modelGroup) scene.remove(modelGroup);
             modelGroup = new THREE.Group();
 
-            const geometry = new THREE.BoxGeometry(x, z, y); 
-            const material = new THREE.MeshStandardMaterial({ 
-                color: 0x1e88e5, 
-                roughness: 0.15, 
-                metalness: 0.05
-            });
-            
-            currentCubeMesh = new THREE.Mesh(geometry, material);
-            currentCubeMesh.position.y = z / 2;
-            currentCubeMesh.castShadow = true;
-            currentCubeMesh.receiveShadow = true;
-            modelGroup.add(currentCubeMesh);
+            // 1. 기본 상자 생성
+            const boxGeo = new THREE.BoxGeometry(x, z, y); 
+            const boxMat = new THREE.MeshStandardMaterial({ color: 0x1e88e5, roughness: 0.15 });
+            const cubeMesh = new THREE.Mesh(boxGeo, boxMat);
+            cubeMesh.position.y = z / 2;
+            cubeMesh.castShadow = true;
+            cubeMesh.receiveShadow = true;
+            modelGroup.add(cubeMesh);
 
-            const edges = new THREE.EdgesGeometry(geometry);
-            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1.5 }));
-            line.position.y = z / 2;
-            modelGroup.add(line);
+            // 2. 💡 [3D 글자 생성] 상자 위에 얹을 입체 텍스트 모델링 연산
+            const textGeo = new THREE.TextGeometry('TEST', {
+                font: loadedFont,
+                size: fSize,
+                height: fThick, // 돌출 깊이
+                curveSegments: 4
+            });
+            textGeo.computeBoundingBox();
+            
+            // 글씨를 상자 윗면 정중앙으로 정렬하기 위한 계산
+            const centerOffset = - 0.5 * ( textGeo.boundingBox.max.x - textGeo.boundingBox.min.x );
+            const zOffset = - 0.5 * ( textGeo.boundingBox.max.y - textGeo.boundingBox.min.y );
+            
+            const textMat = new THREE.MeshStandardMaterial({ color: 0xffeb3b, roughness: 0.2 }); // 노란색 글씨
+            const textMesh = new THREE.Mesh(textGeo, textMat);
+            
+            // 상자 표면 맨 위(z)에 안착시키고 배치 조정
+            textMesh.position.set(centerOffset, z, -zOffset);
+            textMesh.rotation.x = -Math.PI / 2; // 상자 윗면을 바라보도록 눕힘
+            textMesh.castShadow = true;
+            modelGroup.add(textMesh);
 
             scene.add(modelGroup);
         }
 
-        // 💡 [핵심 함수] 로그인 없이 브라우저 메모리 안에서 STL 파일을 가공해 다운로드하는 로직
         function downloadSTL() {
-            if (!currentCubeMesh) return;
-
-            // 1. STLExporter를 사용하여 상자 메쉬 데이터를 STL 포맷의 텍스트로 전환합니다.
+            if (!modelGroup) return;
             const exporter = new THREE.STLExporter();
-            const result = exporter.parse(currentCubeMesh, { binary: true });
+            // 💡 [결합 추출] 상자와 글씨가 통째로 담긴 modelGroup 전체를 파일로 변환합니다.
+            const result = exporter.parse(modelGroup, { binary: true });
 
-            // 2. 가상의 파일 다운로드 링크를 브라우저에 몰래 생성합니다.
             const blob = new Blob([result], { type: 'application/octet-stream' });
             const link = document.createElement('a');
             link.style.display = 'none';
             document.body.appendChild(link);
-
-            // 3. 현재 조절된 수치 기반으로 파일 이름을 동적으로 지정하고 다운로드를 트리거합니다.
-            const x = document.getElementById('sizeX').value;
-            const y = document.getElementById('sizeY').value;
-            const z = document.getElementById('sizeZ').value;
-            
             link.href = URL.createObjectURL(blob);
-            link.download = `my_box_${x}x${y}x${z}.stl`;
-            link.click(); // 다운로드 클릭 강제 수행
-
-            // 4. 사용이 끝난 가상 링크 소멸 정리
+            link.download = `text_box_model.stl`;
+            link.click();
             document.body.removeChild(link);
         }
 
@@ -159,8 +156,6 @@
             controls.update();
             renderer.render(scene, camera);
         }
-
-        updateModel();
         animate();
     </script>
 </body>
