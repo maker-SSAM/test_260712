@@ -6,7 +6,7 @@
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/exporters/STLExporter.js"></script>
-    <!-- 💡 [핵심 엔진 추가] 웹 브라우저 자체에서 TTF 폰트의 벡터 패스를 추출하는 라이브러리 -->
+    <!-- 웹 브라우저 자체에서 TTF 폰트의 벡터 패스를 추출하는 라이브러리 -->
     <script src="https://cdn.jsdelivr.net/npm/opentype.js@1.3.4/dist/opentype.min.js"></script>
     <style>
         body { font-family: sans-serif; margin: 20px; display: flex; }
@@ -80,18 +80,21 @@
         // 상자 선행 렌더링
         updateModel();
 
-        // 💡 [변경 및 보완] CORS 차단이 없는 구글 오픈소스 TTF 폰트 파일을 opentype.js 엔진으로 직접 로드
-        opentype.load('https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/nanumgothic/NanumGothic-Bold.ttf', function(err, font) {
+        // [변경 포인트] 외부 보안 차단이 없는 안정적인 정적 서체 파일 경로로 지정
+        const fontUrl = 'https://raw.githubusercontent.com/google/fonts/main/ofl/nanumgothic/NanumGothic-Bold.ttf';
+        
+        opentype.load(fontUrl, function(err, font) {
             if (err) {
-                console.error('폰트 로드 실패:', err);
+                console.error('폰트 로드 실패, 기본 로직으로 전환합니다:', err);
             } else {
                 openTypeFont = font;
-                updateModel(); // 로드 완료 시 글자를 결합하여 갱신
+                updateModel(); // 폰트 로드 완료 시 화면 리프레시
             }
         });
 
         // opentype.js의 패스를 Three.js의 Shape로 변환하는 헬퍼 함수
         function createThreeShapes(text, size) {
+            if (!openTypeFont) return [];
             const path = openTypeFont.getPath(text, 0, 0, size);
             const fontPaths = path.toCommands();
             const shapes = [];
@@ -117,7 +120,7 @@
         }
 
         function updateModel() {
-            const textValue = document.getElementById('inputText').value || ' ';
+            const textValue = document.getElementById('inputText').value || '';
             const x = parseFloat(document.getElementById('sizeX').value);
             const y = parseFloat(document.getElementById('sizeY').value);
             const z = parseFloat(document.getElementById('sizeZ').value);
@@ -143,11 +146,10 @@
             cubeMesh.receiveShadow = true;
             modelGroup.add(cubeMesh);
 
-            // 2. 💡 [변경점: 진짜 3D 메쉬 돌출 연산]
-            if (openTypeFont) {
+            // 2. 3D 메쉬 글자 돌출 연산
+            if (openTypeFont && textValue.trim().length > 0) {
                 const shapes = createThreeShapes(textValue, fSize);
                 
-                // ExtrudeGeometry를 사용하여 캔버스 이미지 방식이 아닌 진짜 벡터 두께 부여
                 const extrudeSettings = {
                     depth: fThick,
                     bevelEnabled: false,
@@ -156,18 +158,25 @@
                 
                 const textGeo = new THREE.ExtrudeGeometry(shapes, extrudeSettings);
                 
-                // 정중앙 정렬을 위한 연산
+                // [보완 포인트] 정중앙 정렬을 위한 바운딩 박스 정밀 연산
                 textGeo.computeBoundingBox();
-                const centerOffset = - 0.5 * ( textGeo.boundingBox.max.x - textGeo.boundingBox.min.x );
-                const yOffset = - 0.5 * ( textGeo.boundingBox.max.y - textGeo.boundingBox.min.y );
+                const minX = textGeo.boundingBox.min.x;
+                const maxX = textGeo.boundingBox.max.x;
+                const minY = textGeo.boundingBox.min.y;
+                const maxY = textGeo.boundingBox.max.y;
+                
+                const textWidth = maxX - minX;
+                const textHeight = maxY - minY;
                 
                 const textMat = new THREE.MeshStandardMaterial({ color: 0xffeb3b, roughness: 0.2 });
                 const textMesh = new THREE.Mesh(textGeo, textMat);
                 
-                // 상자 표면 정중앙 안착 및 눕히기 (opentype.js 좌표계 상하 반전 보정)
-                textMesh.rotation.x = Math.PI; 
+                // opentype.js의 뒤집힌 기본 2D 평면 좌표계를 눕혀서 상자 상단 표면에 밀착하는 보정값
+                textMesh.rotation.x = Math.PI / 2;
                 textMesh.rotation.z = Math.PI;
-                textMesh.position.set(-centerOffset, z, -yOffset);
+                
+                // 상자 표면 정중앙 계산 배치
+                textMesh.position.set(textWidth / 2 - minX, z, -textHeight / 2 - minY);
                 textMesh.castShadow = true;
                 
                 modelGroup.add(textMesh);
@@ -183,11 +192,11 @@
 
             const blob = new Blob([result], { type: 'application/octet-stream' });
             const link = document.createElement('a');
+            const textValue = document.getElementById('inputText').value || 'model';
+            
             link.style.display = 'none';
             document.body.appendChild(link);
             link.href = URL.createObjectURL(blob);
-            
-            const textValue = document.getElementById('inputText').value || 'model';
             link.download = `${textValue}_box.stl`;
             link.click();
             document.body.removeChild(link);
