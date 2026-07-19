@@ -2,11 +2,10 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>초등 교육용 파라매트릭 3D 글자 돌출 뷰어</title>
+    <title>초등 교육용 한글 파라매트릭 3D 뷰어</title>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/exporters/STLExporter.js"></script>
-    <!-- 💡 [폰트 기능 필수 라이브러리] 3D 글자 생성을 위한 폰트 로더 추가 -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/loaders/FontLoader.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/geometries/TextGeometry.js"></script>
     <style>
@@ -15,7 +14,7 @@
         #viewer { width: 600px; height: 400px; background: #eee; margin-left: 20px; border-radius: 8px; position: relative; overflow: hidden; }
         .control-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input { width: 100%; }
+        input[type="range"], input[type="text"] { width: 100%; padding: 4px; box-sizing: border-box; }
         .download-btn {
             width: 100%; padding: 12px; background-color: #4caf50; color: white;
             border: none; border-radius: 4px; font-size: 16px; font-weight: bold;
@@ -27,16 +26,21 @@
 <body>
 
     <div id="controls">
-        <h3>글자 돌출 설정</h3>
-        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* Hahmlet 글꼴이 적용된 3D 글씨의 크기와 높이를 조절합니다.</p>
+        <h3>한글 3D 각인 설정</h3>
+        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* 글자를 입력하고 슬라이더를 움직이면 3D 모양이 실시간으로 변합니다.</p>
         
-        <!-- 상자 크기 조절 -->
-        <div class="control-group"><label>상자 가로 (X): <span id="valX">60</span>mm</label><input type="range" id="sizeX" min="30" max="150" value="60" oninput="updateModel()"></div>
-        <div class="control-group"><label>상자 세로 (Y): <span id="valY">60</span>mm</label><input type="range" id="sizeY" min="30" max="150" value="60" oninput="updateModel()"></div>
+        <!-- 💡 [입력창 추가] 학생들이 원하는 한글을 직접 입력하는 창 -->
+        <div class="control-group">
+            <label>각인할 글자 입력</label>
+            <input type="text" id="inputText" value="테스트" oninput="updateModel()">
+        </div>
+
+        <!-- 크기 제어 스위치 -->
+        <div class="control-group"><label>상자 가로 (X): <span id="valX">60</span>mm</label><input type="range" id="sizeX" min="40" max="150" value="60" oninput="updateModel()"></div>
+        <div class="control-group"><label>상자 세로 (Y): <span id="valY">60</span>mm</label><input type="range" id="sizeY" min="40" max="150" value="60" oninput="updateModel()"></div>
         <div class="control-group"><label>상자 높이 (Z): <span id="valZ">20</span>mm</label><input type="range" id="sizeZ" min="10" max="100" value="20" oninput="updateModel()"></div>
         
-        <!-- 💡 [글자 옵션 추가] 글자 크기와 돌출 정도 제어 슬라이더 -->
-        <div class="control-group"><label>글자 크기: <span id="valFontSize">12</span></label><input type="range" id="fontSize" min="6" max="25" value="12" oninput="updateModel()"></div>
+        <div class="control-group"><label>글자 크기: <span id="valFontSize">10</span></label><input type="range" id="fontSize" min="5" max="25" value="10" oninput="updateModel()"></div>
         <div class="control-group"><label>글자 돌출 높이: <span id="valFontThick">4</span>mm</label><input type="range" id="fontThick" min="1" max="15" value="4" oninput="updateModel()"></div>
         
         <button class="download-btn" onclick="downloadSTL()">글자 포함 STL 다운로드</button>
@@ -60,13 +64,12 @@
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
 
-        scene.add(new THREE.AmbientLight(0x444444));
+        scene.add(new THREE.AmbientLight(0x555555));
         const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
         dirLight.position.set(80, 150, 60);
         dirLight.castShadow = true;
         scene.add(dirLight);
 
-        // 바닥 격자 및 그림자 판
         scene.add(new THREE.GridHelper(300, 30, 0x888888, 0xbbbbbb));
         const floor = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.ShadowMaterial({ opacity: 0.2 }));
         floor.rotation.x = -Math.PI / 2;
@@ -74,18 +77,19 @@
         scene.add(floor);
 
         let modelGroup;
-        let loadedFont = null; // 💡 로드된 폰트 데이터를 보관할 변수
+        let loadedFont = null;
 
-        // 💡 [폰트 로드] 구글 Hahmlet:style=Black 기반으로 제작된 원격 3D JSON 폰트를 미리 불러옵니다.
+        // 💡 [폰트 변경] 한글 자형 데이터가 내장된 오픈소스 3D JSON 폰트 주소로 대체 연결
         const fontLoader = new THREE.FontLoader();
-        fontLoader.load('https://raw.githubusercontent.com/mrdoob/three.js/master/examples/fonts/helvetiker_regular.typeface.json', function (font) {
-            loadedFont = font; // 임시 테스트용 서체 로드 후 모델 렌더링 호출
+        fontLoader.load('https://raw.githubusercontent.com/doronavig/threejs-korean-font/main/NanumGothic_Regular.json', function (font) {
+            loadedFont = font;
             updateModel();
         });
 
         function updateModel() {
-            if (!loadedFont) return; // 폰트가 아직 안 불러와졌으면 대기
+            if (!loadedFont) return;
 
+            const textValue = document.getElementById('inputText').value || ' ';
             const x = parseFloat(document.getElementById('sizeX').value);
             const y = parseFloat(document.getElementById('sizeY').value);
             const z = parseFloat(document.getElementById('sizeZ').value);
@@ -101,7 +105,7 @@
             if (modelGroup) scene.remove(modelGroup);
             modelGroup = new THREE.Group();
 
-            // 1. 기본 상자 생성
+            // 1. 베이스 상자
             const boxGeo = new THREE.BoxGeometry(x, z, y); 
             const boxMat = new THREE.MeshStandardMaterial({ color: 0x1e88e5, roughness: 0.15 });
             const cubeMesh = new THREE.Mesh(boxGeo, boxMat);
@@ -110,25 +114,23 @@
             cubeMesh.receiveShadow = true;
             modelGroup.add(cubeMesh);
 
-            // 2. 💡 [3D 글자 생성] 상자 위에 얹을 입체 텍스트 모델링 연산
-            const textGeo = new THREE.TextGeometry('TEST', {
+            // 2. 💡 [텍스트 렌더링] 입력창 데이터 변수를 받아 3D 글자 생성
+            const textGeo = new THREE.TextGeometry(textValue, {
                 font: loadedFont,
                 size: fSize,
-                height: fThick, // 돌출 깊이
+                height: fThick,
                 curveSegments: 4
             });
             textGeo.computeBoundingBox();
             
-            // 글씨를 상자 윗면 정중앙으로 정렬하기 위한 계산
             const centerOffset = - 0.5 * ( textGeo.boundingBox.max.x - textGeo.boundingBox.min.x );
             const zOffset = - 0.5 * ( textGeo.boundingBox.max.y - textGeo.boundingBox.min.y );
             
-            const textMat = new THREE.MeshStandardMaterial({ color: 0xffeb3b, roughness: 0.2 }); // 노란색 글씨
+            const textMat = new THREE.MeshStandardMaterial({ color: 0xffeb3b, roughness: 0.2 });
             const textMesh = new THREE.Mesh(textGeo, textMat);
             
-            // 상자 표면 맨 위(z)에 안착시키고 배치 조정
             textMesh.position.set(centerOffset, z, -zOffset);
-            textMesh.rotation.x = -Math.PI / 2; // 상자 윗면을 바라보도록 눕힘
+            textMesh.rotation.x = -Math.PI / 2;
             textMesh.castShadow = true;
             modelGroup.add(textMesh);
 
@@ -138,7 +140,6 @@
         function downloadSTL() {
             if (!modelGroup) return;
             const exporter = new THREE.STLExporter();
-            // 💡 [결합 추출] 상자와 글씨가 통째로 담긴 modelGroup 전체를 파일로 변환합니다.
             const result = exporter.parse(modelGroup, { binary: true });
 
             const blob = new Blob([result], { type: 'application/octet-stream' });
@@ -146,7 +147,9 @@
             link.style.display = 'none';
             document.body.appendChild(link);
             link.href = URL.createObjectURL(blob);
-            link.download = `text_box_model.stl`;
+            
+            const textValue = document.getElementById('inputText').value || 'model';
+            link.download = `${textValue}_box.stl`;
             link.click();
             document.body.removeChild(link);
         }
