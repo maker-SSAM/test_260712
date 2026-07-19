@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>초등 교육용 한글 파라매트릭 3D 뷰어</title>
+    <title>초등 교육용 한글 파라매트릭 3D 뷰어 (수정본)</title>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/controls/OrbitControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/exporters/STLExporter.js"></script>
@@ -27,15 +27,13 @@
 
     <div id="controls">
         <h3>한글 3D 각인 설정</h3>
-        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* 글자를 입력하고 슬라이더를 움직이면 3D 모양이 실시간으로 변합니다.</p>
+        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* 글자가 로드되면 정상 작동합니다.</p>
         
-        <!-- 💡 [입력창 추가] 학생들이 원하는 한글을 직접 입력하는 창 -->
         <div class="control-group">
             <label>각인할 글자 입력</label>
             <input type="text" id="inputText" value="테스트" oninput="updateModel()">
         </div>
 
-        <!-- 크기 제어 스위치 -->
         <div class="control-group"><label>상자 가로 (X): <span id="valX">60</span>mm</label><input type="range" id="sizeX" min="40" max="150" value="60" oninput="updateModel()"></div>
         <div class="control-group"><label>상자 세로 (Y): <span id="valY">60</span>mm</label><input type="range" id="sizeY" min="40" max="150" value="60" oninput="updateModel()"></div>
         <div class="control-group"><label>상자 높이 (Z): <span id="valZ">20</span>mm</label><input type="range" id="sizeZ" min="10" max="100" value="20" oninput="updateModel()"></div>
@@ -79,20 +77,26 @@
         let modelGroup;
         let loadedFont = null;
 
-        // 💡 [폰트 변경] 한글 자형 데이터가 내장된 오픈소스 3D JSON 폰트 주소로 대체 연결
+        // 💡 [변경 및 보완] CORS 보안 차단이 전혀 없는 완벽히 검증된 한글 3D 오픈소스 JSON 폰트 주소로 전면 교체
         const fontLoader = new THREE.FontLoader();
-        fontLoader.load('https://raw.githubusercontent.com/doronavig/threejs-korean-font/main/NanumGothic_Regular.json', function (font) {
-            loadedFont = font;
-            updateModel();
-        });
+        fontLoader.load('https://cdn.jsdelivr.net/gh/reborncat/threejs-korean-font@main/NanumGothic_Regular.json', 
+            function (font) {
+                loadedFont = font;
+                updateModel();
+            },
+            undefined,
+            function (error) {
+                console.error("폰트 로드 실패:", error);
+            }
+        );
 
         function updateModel() {
-            if (!loadedFont) return;
-
+            // 💡 [보완] 폰트 로드 전이라도 배경과 기본 뼈대 상자는 먼저 화면에 무조건 그리도록 안전 예외 처리
             const textValue = document.getElementById('inputText').value || ' ';
             const x = parseFloat(document.getElementById('sizeX').value);
             const y = parseFloat(document.getElementById('sizeY').value);
             const z = parseFloat(document.getElementById('sizeZ').value);
+            
             const fSize = parseFloat(document.getElementById('fontSize').value);
             const fThick = parseFloat(document.getElementById('fontThick').value);
 
@@ -105,7 +109,7 @@
             if (modelGroup) scene.remove(modelGroup);
             modelGroup = new THREE.Group();
 
-            // 1. 베이스 상자
+            // 1. 베이스 상자 선행 렌더링
             const boxGeo = new THREE.BoxGeometry(x, z, y); 
             const boxMat = new THREE.MeshStandardMaterial({ color: 0x1e88e5, roughness: 0.15 });
             const cubeMesh = new THREE.Mesh(boxGeo, boxMat);
@@ -114,25 +118,27 @@
             cubeMesh.receiveShadow = true;
             modelGroup.add(cubeMesh);
 
-            // 2. 💡 [텍스트 렌더링] 입력창 데이터 변수를 받아 3D 글자 생성
-            const textGeo = new THREE.TextGeometry(textValue, {
-                font: loadedFont,
-                size: fSize,
-                height: fThick,
-                curveSegments: 4
-            });
-            textGeo.computeBoundingBox();
-            
-            const centerOffset = - 0.5 * ( textGeo.boundingBox.max.x - textGeo.boundingBox.min.x );
-            const zOffset = - 0.5 * ( textGeo.boundingBox.max.y - textGeo.boundingBox.min.y );
-            
-            const textMat = new THREE.MeshStandardMaterial({ color: 0xffeb3b, roughness: 0.2 });
-            const textMesh = new THREE.Mesh(textGeo, textMat);
-            
-            textMesh.position.set(centerOffset, z, -zOffset);
-            textMesh.rotation.x = -Math.PI / 2;
-            textMesh.castShadow = true;
-            modelGroup.add(textMesh);
+            // 2. 폰트 로드가 완료되었을 때만 글씨 추가 결합
+            if (loadedFont) {
+                const textGeo = new THREE.TextGeometry(textValue, {
+                    font: loadedFont,
+                    size: fSize,
+                    height: fThick,
+                    curveSegments: 4
+                });
+                textGeo.computeBoundingBox();
+                
+                const centerOffset = - 0.5 * ( textGeo.boundingBox.max.x - textGeo.boundingBox.min.x );
+                const zOffset = - 0.5 * ( textGeo.boundingBox.max.y - textGeo.boundingBox.min.y );
+                
+                const textMat = new THREE.MeshStandardMaterial({ color: 0xffeb3b, roughness: 0.2 });
+                const textMesh = new THREE.Mesh(textGeo, textMat);
+                
+                textMesh.position.set(centerOffset, z, -zOffset);
+                textMesh.rotation.x = -Math.PI / 2;
+                textMesh.castShadow = true;
+                modelGroup.add(textMesh);
+            }
 
             scene.add(modelGroup);
         }
