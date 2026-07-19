@@ -2,7 +2,7 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>OpenSCAD 웹 파라매트릭 테스트 - 평면 치수 고도화</title>
+    <title>OpenSCAD 웹 파라매트릭 테스트 - 고명암비</title>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/controls/OrbitControls.js"></script>
     <style>
@@ -18,7 +18,7 @@
 
     <div id="controls">
         <h3>직육면체 수치 조절 (mm)</h3>
-        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* 기능 추가: Z축 세로 안내선 및 평면에 누운 입체 텍스트 표시</p>
+        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* 기능 추가: 고대비 조명, 실시간 3D 그림자 및 매끄러운 플라스틱 질감</p>
         <div class="control-group">
             <label>가로 (X): <span id="valX">50</span>mm</label>
             <input type="range" id="sizeX" min="10" max="150" value="50" oninput="updateModel()">
@@ -38,33 +38,53 @@
     <script>
         const container = document.getElementById('viewer');
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xf5f5f5);
+        scene.background = new THREE.Color(0xe0e0e0);
 
         const camera = new THREE.PerspectiveCamera(45, 600 / 400, 1, 1000);
         camera.position.set(120, 150, 200);
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(600, 400);
+        // 💡 [그림자 설정 1] 렌더러의 그림자 기능을 켭니다.
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         container.appendChild(renderer.domElement);
 
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
 
-        // 조명
-        const light1 = new THREE.DirectionalLight(0xffffff, 0.8);
-        light1.position.set(1, 2, 1).normalize();
-        scene.add(light1);
-        const ambientLight = new THREE.AmbientLight(0x707070);
+        // 💡 [조명 설정] 주변광을 대폭 낮추고 가리키는 주 조명을 강하게 설정하여 명암비를 극대화합니다.
+        const ambientLight = new THREE.AmbientLight(0x333333); // 은은한 조명 축소
         scene.add(ambientLight);
 
-        // 바닥 격자 및 기본 축
-        const gridHelper = new THREE.GridHelper(300, 30, 0xaaaaaa, 0xcccccc);
-        gridHelper.position.y = 0;
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2); // 강한 주 조명
+        dirLight.position.set(80, 150, 60);
+        // 💡 [그림자 설정 2] 주 조명이 그림자를 만들도록 허용합니다.
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 500;
+        const d = 100;
+        dirLight.shadow.camera.left = -d;
+        dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d;
+        dirLight.shadow.camera.bottom = -d;
+        scene.add(dirLight);
+
+        // 💡 바닥 격자 및 실제 그림자가 맺힐 가상의 투명 바닥판 생성
+        const gridHelper = new THREE.GridHelper(300, 30, 0x888888, 0xbbbbbb);
         scene.add(gridHelper);
+
+        const floorGeo = new THREE.PlaneGeometry(300, 300);
+        const floorMat = new THREE.ShadowMaterial({ opacity: 0.2 }); // 그림자만 받는 투명 재질
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true; // 그림자를 받아 정착함
+        scene.add(floor);
 
         let modelGroup;
 
-        // 💡 [변경점 1] 글씨를 평면(스티커)으로 만들기 위해 캔버스 이미지를 생성하는 텍스트 함수
         function create3DTextPlane(text) {
             const canvas = document.createElement('canvas');
             canvas.width = 128;
@@ -99,19 +119,27 @@
             if (modelGroup) scene.remove(modelGroup);
             modelGroup = new THREE.Group();
 
-            // 상자 및 윤곽선
             const geometry = new THREE.BoxGeometry(x, z, y); 
-            const material = new THREE.MeshStandardMaterial({ color: 0x3388dd, roughness: 0.4, metalness: 0.1 });
+            
+            // 💡 [재질 설정] 빛 반사를 매끄럽게 받아 하이라이트가 생기도록 플라스틱 질감 표현
+            const material = new THREE.MeshStandardMaterial({ 
+                color: 0x1e88e5, 
+                roughness: 0.15, // 낮을수록 매끄럽고 하이라이트가 선명해짐
+                metalness: 0.05
+            });
             const cubeMesh = new THREE.Mesh(geometry, material);
             cubeMesh.position.y = z / 2;
+            // 💡 [그림자 설정 3] 상자가 그림자를 만들고, 스스로에게도 맺히게 설정
+            cubeMesh.castShadow = true;
+            cubeMesh.receiveShadow = true;
             modelGroup.add(cubeMesh);
 
             const edges = new THREE.EdgesGeometry(geometry);
-            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 2 }));
+            const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1.5 }));
             line.position.y = z / 2;
             modelGroup.add(line);
 
-            // 💡 [변경점 2] Z축 크기 가늠 세로 안내선 추가 (상자 왼쪽 뒤 모서리 근처에 배치)
+            // Z축 크기 가늠 세로 안내선
             const zLineGeo = new THREE.BufferGeometry().setFromPoints([
                 new THREE.Vector3(-x/2 - 10, 0, y/2 + 10),
                 new THREE.Vector3(-x/2 - 10, z, y/2 + 10)
@@ -119,24 +147,23 @@
             const zLine = new THREE.Line(zLineGeo, new THREE.LineBasicMaterial({ color: 0xff5722, linewidth: 2 }));
             modelGroup.add(zLine);
 
-            // 💡 [변경점 3] 각 글씨 평면을 3D 좌표평면 각도에 맞게 회전시켜 눕히기
-            // 가로(X) 치수: 바닥에 눕힘
+            // 가로(X) 치수 바닥 정렬
             const xLabel = create3DTextPlane(`${x} mm`);
-            xLabel.position.set(0, 0.5, y/2 + 15); 
-            xLabel.rotation.x = -Math.PI / 2; // 바닥 평면에 눕히기
+            xLabel.position.set(0, 0.2, y/2 + 15); 
+            xLabel.rotation.x = -Math.PI / 2; 
             modelGroup.add(xLabel);
 
-            // 세로(Y) 치수: 바닥에 눕힘
+            // 세로(Y) 치수 바닥 정렬
             const yLabel = create3DTextPlane(`${y} mm`);
-            yLabel.position.set(x/2 + 15, 0.5, 0); 
+            yLabel.position.set(x/2 + 15, 0.2, 0); 
             yLabel.rotation.x = -Math.PI / 2; 
-            yLabel.rotation.z = Math.PI / 2; // 세로 방향 정렬
+            yLabel.rotation.z = Math.PI / 2; 
             modelGroup.add(yLabel);
 
-            // 높이(Z) 치수: 세로 가이드라인 옆에 수직 벽면 평면으로 세움
+            // 높이(Z) 치수 벽면 정렬
             const zLabel = create3DTextPlane(`${z} mm`);
             zLabel.position.set(-x/2 - 25, z/2, y/2 + 10); 
-            zLabel.rotation.y = Math.PI / 4; // 카메라를 비스듬히 바라보도록 세우기
+            zLabel.rotation.y = Math.PI / 4; 
             modelGroup.add(zLabel);
 
             scene.add(modelGroup);
