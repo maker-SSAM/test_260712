@@ -2,9 +2,12 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>OpenSCAD 웹 파라매트릭 테스트 - 고명암비</title>
+    <title>초등 교육용 파라매트릭 3D 뷰어 & STL 다운로드</title>
+    <!-- Three.js 라이브러리 및 컨트롤러 -->
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/build/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- 💡 [핵심 추가] 웹 브라우저 자체에서 STL 파일을 만들어내는 파일 추출기 라이브러리 -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.146.0/examples/js/exporters/STLExporter.js"></script>
     <style>
         body { font-family: sans-serif; margin: 20px; display: flex; }
         #controls { width: 300px; padding: 20px; background: #f5f5f5; border-radius: 8px; z-index: 10; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
@@ -12,13 +15,28 @@
         .control-group { margin-bottom: 15px; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
         input { width: 100%; }
+        /* 💡 다운로드 버튼 디자인 */
+        .download-btn {
+            width: 100%;
+            padding: 12px;
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .download-btn:hover { background-color: #45a049; }
     </style>
 </head>
 <body>
 
     <div id="controls">
-        <h3>직육면체 수치 조절 (mm)</h3>
-        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* 기능 추가: 고대비 조명, 실시간 3D 그림자 및 매끄러운 플라스틱 질감</p>
+        <h3>상자 크기 조절하기</h3>
+        <p style="font-size: 0.9em; color: #666; margin-bottom: 15px;">* 수치를 조절한 후 아래 버튼을 누르면 즉시 3D 파일이 다운로드됩니다.</p>
         <div class="control-group">
             <label>가로 (X): <span id="valX">50</span>mm</label>
             <input type="range" id="sizeX" min="10" max="150" value="50" oninput="updateModel()">
@@ -31,6 +49,9 @@
             <label>높이 (Z): <span id="valZ">30</span>mm</label>
             <input type="range" id="sizeZ" min="5" max="100" value="30" oninput="updateModel()">
         </div>
+        
+        <!-- 💡 [버튼 추가] 클릭하면 파일 생성을 유발하는 버튼 -->
+        <button class="download-btn" onclick="downloadSTL()">3D 파일(.STL) 다운로드</button>
     </div>
 
     <div id="viewer"></div>
@@ -45,7 +66,6 @@
 
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(600, 400);
-        // 💡 [그림자 설정 1] 렌더러의 그림자 기능을 켭니다.
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         container.appendChild(renderer.domElement);
@@ -53,59 +73,26 @@
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
 
-        // 💡 [조명 설정] 주변광을 대폭 낮추고 가리키는 주 조명을 강하게 설정하여 명암비를 극대화합니다.
-        const ambientLight = new THREE.AmbientLight(0x333333); // 은은한 조명 축소
+        const ambientLight = new THREE.AmbientLight(0x333333);
         scene.add(ambientLight);
 
-        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2); // 강한 주 조명
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
         dirLight.position.set(80, 150, 60);
-        // 💡 [그림자 설정 2] 주 조명이 그림자를 만들도록 허용합니다.
         dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 2048;
-        dirLight.shadow.mapSize.height = 2048;
-        dirLight.shadow.camera.near = 0.5;
-        dirLight.shadow.camera.far = 500;
-        const d = 100;
-        dirLight.shadow.camera.left = -d;
-        dirLight.shadow.camera.right = d;
-        dirLight.shadow.camera.top = d;
-        dirLight.shadow.camera.bottom = -d;
         scene.add(dirLight);
 
-        // 💡 바닥 격자 및 실제 그림자가 맺힐 가상의 투명 바닥판 생성
         const gridHelper = new THREE.GridHelper(300, 30, 0x888888, 0xbbbbbb);
         scene.add(gridHelper);
 
         const floorGeo = new THREE.PlaneGeometry(300, 300);
-        const floorMat = new THREE.ShadowMaterial({ opacity: 0.2 }); // 그림자만 받는 투명 재질
+        const floorMat = new THREE.ShadowMaterial({ opacity: 0.2 });
         const floor = new THREE.Mesh(floorGeo, floorMat);
         floor.rotation.x = -Math.PI / 2;
-        floor.receiveShadow = true; // 그림자를 받아 정착함
+        floor.receiveShadow = true;
         scene.add(floor);
 
         let modelGroup;
-
-        function create3DTextPlane(text) {
-            const canvas = document.createElement('canvas');
-            canvas.width = 128;
-            canvas.height = 64;
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = 'rgba(255,255,255,0.9)';
-            ctx.fillRect(0, 0, 128, 64);
-            ctx.strokeStyle = '#ff5722';
-            ctx.lineWidth = 4;
-            ctx.strokeRect(0, 0, 128, 64);
-            ctx.font = 'bold 24px sans-serif';
-            ctx.fillStyle = '#ff5722';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(text, 64, 32);
-
-            const texture = new THREE.CanvasTexture(canvas);
-            const material = new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide, transparent: true });
-            const geometry = new THREE.PlaneGeometry(24, 12);
-            return new THREE.Mesh(geometry, material);
-        }
+        let currentCubeMesh; // 💡 다운로드할 때 상자 덩어리 데이터만 쏙 빼오기 위한 변수
 
         function updateModel() {
             const x = parseFloat(document.getElementById('sizeX').value);
@@ -120,53 +107,51 @@
             modelGroup = new THREE.Group();
 
             const geometry = new THREE.BoxGeometry(x, z, y); 
-            
-            // 💡 [재질 설정] 빛 반사를 매끄럽게 받아 하이라이트가 생기도록 플라스틱 질감 표현
             const material = new THREE.MeshStandardMaterial({ 
                 color: 0x1e88e5, 
-                roughness: 0.15, // 낮을수록 매끄럽고 하이라이트가 선명해짐
+                roughness: 0.15, 
                 metalness: 0.05
             });
-            const cubeMesh = new THREE.Mesh(geometry, material);
-            cubeMesh.position.y = z / 2;
-            // 💡 [그림자 설정 3] 상자가 그림자를 만들고, 스스로에게도 맺히게 설정
-            cubeMesh.castShadow = true;
-            cubeMesh.receiveShadow = true;
-            modelGroup.add(cubeMesh);
+            
+            currentCubeMesh = new THREE.Mesh(geometry, material);
+            currentCubeMesh.position.y = z / 2;
+            currentCubeMesh.castShadow = true;
+            currentCubeMesh.receiveShadow = true;
+            modelGroup.add(currentCubeMesh);
 
             const edges = new THREE.EdgesGeometry(geometry);
             const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 1.5 }));
             line.position.y = z / 2;
             modelGroup.add(line);
 
-            // Z축 크기 가늠 세로 안내선
-            const zLineGeo = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(-x/2 - 10, 0, y/2 + 10),
-                new THREE.Vector3(-x/2 - 10, z, y/2 + 10)
-            ]);
-            const zLine = new THREE.Line(zLineGeo, new THREE.LineBasicMaterial({ color: 0xff5722, linewidth: 2 }));
-            modelGroup.add(zLine);
-
-            // 가로(X) 치수 바닥 정렬
-            const xLabel = create3DTextPlane(`${x} mm`);
-            xLabel.position.set(0, 0.2, y/2 + 15); 
-            xLabel.rotation.x = -Math.PI / 2; 
-            modelGroup.add(xLabel);
-
-            // 세로(Y) 치수 바닥 정렬
-            const yLabel = create3DTextPlane(`${y} mm`);
-            yLabel.position.set(x/2 + 15, 0.2, 0); 
-            yLabel.rotation.x = -Math.PI / 2; 
-            yLabel.rotation.z = Math.PI / 2; 
-            modelGroup.add(yLabel);
-
-            // 높이(Z) 치수 벽면 정렬
-            const zLabel = create3DTextPlane(`${z} mm`);
-            zLabel.position.set(-x/2 - 25, z/2, y/2 + 10); 
-            zLabel.rotation.y = Math.PI / 4; 
-            modelGroup.add(zLabel);
-
             scene.add(modelGroup);
+        }
+
+        // 💡 [핵심 함수] 로그인 없이 브라우저 메모리 안에서 STL 파일을 가공해 다운로드하는 로직
+        function downloadSTL() {
+            if (!currentCubeMesh) return;
+
+            // 1. STLExporter를 사용하여 상자 메쉬 데이터를 STL 포맷의 텍스트로 전환합니다.
+            const exporter = new THREE.STLExporter();
+            const result = exporter.parse(currentCubeMesh, { binary: true });
+
+            // 2. 가상의 파일 다운로드 링크를 브라우저에 몰래 생성합니다.
+            const blob = new Blob([result], { type: 'application/octet-stream' });
+            const link = document.createElement('a');
+            link.style.display = 'none';
+            document.body.appendChild(link);
+
+            // 3. 현재 조절된 수치 기반으로 파일 이름을 동적으로 지정하고 다운로드를 트리거합니다.
+            const x = document.getElementById('sizeX').value;
+            const y = document.getElementById('sizeY').value;
+            const z = document.getElementById('sizeZ').value;
+            
+            link.href = URL.createObjectURL(blob);
+            link.download = `my_box_${x}x${y}x${z}.stl`;
+            link.click(); // 다운로드 클릭 강제 수행
+
+            // 4. 사용이 끝난 가상 링크 소멸 정리
+            document.body.removeChild(link);
         }
 
         function animate() {
